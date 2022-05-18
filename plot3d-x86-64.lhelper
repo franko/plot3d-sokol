@@ -6,4 +6,8 @@ CPU_TARGET=nehalem
 
 BUILD_TYPE=Release
 
-packages=("sdl2 -opengl -threads" pystring fmt getopt spirv-tools "glslang -optimizer" spirv-cross sokol-shdc libsokol-gfx)
+packages=(
+    "sdl2 -opengl -threads"
+    pystring fmt getopt spirv-tools "glslang -optimizer" spirv-cross sokol-shdc
+    libsokol-gfx handmademath
+)

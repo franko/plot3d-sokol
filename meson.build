@@ -3,6 +3,7 @@ project('plot3d', 'c', default_options : ['c_std=c99'])
 plot3d_slang = 'glsl330'
 
 plot3d_deps = []
+plot3d_deps += dependency('handmademath')
 plot3d_deps += dependency('libsokol-gfx')
 plot3d_deps += dependency('sdl2', method: 'config-tool')
 
