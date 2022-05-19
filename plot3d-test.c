@@ -1,8 +1,20 @@
-#define HANDMADE_MATH_IMPLEMENTATION
-#include "HandmadeMath.h"
+#include <HandmadeMath.h>
 #include <SDL.h>
-#include "sokol_gfx.h"
+#include <sokol_gfx.h>
+
 #include "plot3d.glsl.h"
+
+struct plot_geom {
+    float *vertices;
+    int vertices_len;
+    uint16_t *indices;
+    int indices_len;
+};
+
+struct plot_domain {
+    float x1, x2, y1, y2;
+    int nx, ny;
+};
 
 static struct {
     float rx, ry;
@@ -10,60 +22,68 @@ static struct {
     sg_bindings bind;
     SDL_Window *window;
     SDL_GLContext *ctx;
+    struct plot_geom geom;
 } state;
 
+float plot_fn(float x, float y) {
+    const float r = HMM_SQRTF(x * x + y * y);
+    if (r < 1e-6) {
+        const float xq = x * x;
+        return (1 - xq / 6 + xq * xq / 120);
+    }
+    return HMM_SinF(r) / r;
+}
+
+static void do_plot3d_geometry(struct plot_geom *geom, const struct plot_domain domain) {
+    const double dx = (domain.x2 - domain.x1) / domain.nx;
+    const double dy = (domain.y2 - domain.y1) / domain.ny;
+    const int values_per_line = 3 + 4;
+    geom->vertices_len = (domain.nx + 1) * (domain.ny + 1); /* Nb of points */
+    geom->vertices = malloc(sizeof(float) * geom->vertices_len * values_per_line);
+    for (int i = 0; i <= domain.nx; i++) {
+        for (int j = 0; j <= domain.ny; j++) {
+            const float x = domain.x1 + i * dx, y = domain.y1 + j * dy;
+            const float z = plot_fn(x, y);
+            const float col = z * z;
+            float line[] = {x, y, z, 1.0f, col, col, 1.0f};
+            float *v_ptr = geom->vertices + values_per_line * (i * (domain.ny + 1) + j);
+            memcpy(v_ptr, line, sizeof(line));
+        }
+    }
+    geom->indices_len = 2 * domain.nx * domain.ny; /* Nb of triangles */
+    geom->indices = malloc(sizeof(uint16_t) * 3 * geom->indices_len);
+    for (int i = 0; i < domain.nx; i++) {
+        for (int j = 0; j < domain.ny; j++) {
+            uint16_t *i_ptr = geom->indices + 3 * 2 * (i * domain.ny + j);
+            /* First triangle */
+            i_ptr[0] = i       * (domain.ny + 1) + j;
+            i_ptr[1] = (i + 1) * (domain.ny + 1) + j;
+            i_ptr[2] = i       * (domain.ny + 1) + j + 1;
+
+            /* Second triangle */
+            i_ptr[3] = i       * (domain.ny + 1) + j + 1;
+            i_ptr[4] = (i + 1) * (domain.ny + 1) + j;
+            i_ptr[5] = (i + 1) * (domain.ny + 1) + j + 1;
+        }
+    }
+}
+
 void init() {
+    const struct plot_domain domain = {-8.0f, 8.0f, -8.0f, 8.0f, 50, 50};
+    struct plot_geom *surf = &state.geom;
+
+    do_plot3d_geometry(surf, domain);
+
     sg_setup(&(sg_desc){ 0 });
 
-    /* cube vertex buffer */
-    float vertices[] = {
-        -1.0, -1.0, -1.0,   1.0, 0.0, 0.0, 1.0,
-         1.0, -1.0, -1.0,   1.0, 0.0, 0.0, 1.0,
-         1.0,  1.0, -1.0,   1.0, 0.0, 0.0, 1.0,
-        -1.0,  1.0, -1.0,   1.0, 0.0, 0.0, 1.0,
-
-        -1.0, -1.0,  1.0,   0.0, 1.0, 0.0, 1.0,
-         1.0, -1.0,  1.0,   0.0, 1.0, 0.0, 1.0,
-         1.0,  1.0,  1.0,   0.0, 1.0, 0.0, 1.0,
-        -1.0,  1.0,  1.0,   0.0, 1.0, 0.0, 1.0,
-
-        -1.0, -1.0, -1.0,   0.0, 0.0, 1.0, 1.0,
-        -1.0,  1.0, -1.0,   0.0, 0.0, 1.0, 1.0,
-        -1.0,  1.0,  1.0,   0.0, 0.0, 1.0, 1.0,
-        -1.0, -1.0,  1.0,   0.0, 0.0, 1.0, 1.0,
-
-        1.0, -1.0, -1.0,    1.0, 0.5, 0.0, 1.0,
-        1.0,  1.0, -1.0,    1.0, 0.5, 0.0, 1.0,
-        1.0,  1.0,  1.0,    1.0, 0.5, 0.0, 1.0,
-        1.0, -1.0,  1.0,    1.0, 0.5, 0.0, 1.0,
-
-        -1.0, -1.0, -1.0,   0.0, 0.5, 1.0, 1.0,
-        -1.0, -1.0,  1.0,   0.0, 0.5, 1.0, 1.0,
-         1.0, -1.0,  1.0,   0.0, 0.5, 1.0, 1.0,
-         1.0, -1.0, -1.0,   0.0, 0.5, 1.0, 1.0,
-
-        -1.0,  1.0, -1.0,   1.0, 0.0, 0.5, 1.0,
-        -1.0,  1.0,  1.0,   1.0, 0.0, 0.5, 1.0,
-         1.0,  1.0,  1.0,   1.0, 0.0, 0.5, 1.0,
-         1.0,  1.0, -1.0,   1.0, 0.0, 0.5, 1.0
-    };
     sg_buffer vbuf = sg_make_buffer(&(sg_buffer_desc){
-        .data = SG_RANGE(vertices),
+        .data = {surf->vertices, sizeof(float) * (3 + 4) * surf->vertices_len},
         .label = "cube-vertices"
     });
 
-    /* create an index buffer for the cube */
-    uint16_t indices[] = {
-        0, 1, 2,  0, 2, 3,
-        6, 5, 4,  7, 6, 4,
-        8, 9, 10,  8, 10, 11,
-        14, 13, 12,  15, 14, 12,
-        16, 17, 18,  16, 18, 19,
-        22, 21, 20,  23, 22, 20
-    };
     sg_buffer ibuf = sg_make_buffer(&(sg_buffer_desc){
         .type = SG_BUFFERTYPE_INDEXBUFFER,
-        .data = SG_RANGE(indices),
+        .data = {surf->indices, sizeof(uint16_t) * 3 * surf->indices_len},
         .label = "cube-indices"
     });
 
@@ -82,7 +102,7 @@ void init() {
         },
         .shader = shd,
         .index_type = SG_INDEXTYPE_UINT16,
-        .cull_mode = SG_CULLMODE_BACK,
+        .cull_mode = SG_CULLMODE_NONE,
         .depth = {
             .write_enabled = true,
             .compare = SG_COMPAREFUNC_LESS_EQUAL,
@@ -97,7 +117,7 @@ void init() {
     };
 }
 
-void frame(int w, int h, Uint32 frame_duration) {
+void frame(const struct plot_geom *geom, int w, int h, Uint32 frame_duration) {
     /* NOTE: the vs_params_t struct has been code-generated by the shader-code-gen */
     vs_params_t vs_params;
     const float t = frame_duration * 0.03;
@@ -105,9 +125,11 @@ void frame(int w, int h, Uint32 frame_duration) {
     hmm_mat4 view = HMM_LookAt(HMM_Vec3(0.0f, 1.5f, 6.0f), HMM_Vec3(0.0f, 0.0f, 0.0f), HMM_Vec3(0.0f, 1.0f, 0.0f));
     hmm_mat4 view_proj = HMM_MultiplyMat4(proj, view);
     state.rx += 1.0f * t; state.ry += 2.0f * t;
+    hmm_mat4 scalem = HMM_Scale(HMM_Vec3(0.2f, 0.2f, 1.0f));
     hmm_mat4 rxm = HMM_Rotate(state.rx, HMM_Vec3(1.0f, 0.0f, 0.0f));
     hmm_mat4 rym = HMM_Rotate(state.ry, HMM_Vec3(0.0f, 1.0f, 0.0f));
-    hmm_mat4 model = HMM_MultiplyMat4(rxm, rym);
+    hmm_mat4 rotm = HMM_MultiplyMat4(rxm, rym);
+    hmm_mat4 model = HMM_MultiplyMat4(rotm, scalem);
     vs_params.mvp = HMM_MultiplyMat4(view_proj, model);
 
     sg_pass_action pass_action = {
@@ -117,7 +139,7 @@ void frame(int w, int h, Uint32 frame_duration) {
     sg_apply_pipeline(state.pip);
     sg_apply_bindings(&state.bind);
     sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_vs_params, &SG_RANGE(vs_params));
-    sg_draw(0, 36, 1);
+    sg_draw(0, geom->indices_len * 3, 1);
     sg_end_pass();
     sg_commit();
 }
@@ -141,7 +163,7 @@ int main(int argc, char **argv) {
     while(!SDL_QuitRequested()){
         int w, h;
         SDL_GL_GetDrawableSize(state.window, &w, &h);
-        frame(w, h, frame_duration);
+        frame(&state.geom, w, h, frame_duration);
         SDL_GL_SwapWindow(state.window);
         SDL_Delay(frame_duration);
     }
