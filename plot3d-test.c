@@ -23,30 +23,72 @@ static struct {
     SDL_Window *window;
     SDL_GLContext *ctx;
     struct plot_geom geom;
+    hmm_vec3 light_pos;
 } state;
 
-float plot_fn(float x, float y) {
-    const float r = HMM_SQRTF(x * x + y * y);
+
+// Normally what is said is that to transform a normal vector for a linear transform
+// the inverse transpose is needed but afterward the resulting vector needs to be
+// normalized.
+// We consider that the inverse transpose matrix is not needed but only the cofactor
+// matrix. The two matrices are proportional and normalization is needed in any case.
+//
+// The cofactor matrix has the nice geometrical interpretation that it trasforms
+// bivectors in their representation as normal bector.
+//
+// https://www.reedbeta.com/blog/normals-inverse-transpose-part-1/
+// https://en.wikipedia.org/wiki/Minor_(linear_algebra)#Inverse_of_a_matrix
+hmm_mat4 HMM_Cofactor(hmm_mat4 m) {
+    hmm_mat4 r;
+    r.Elements[0][0] =  (m.Elements[1][1] * m.Elements[2][2] - m.Elements[1][2] * m.Elements[2][1]);
+    r.Elements[1][0] = -(m.Elements[0][1] * m.Elements[2][2] - m.Elements[0][2] * m.Elements[2][1]);
+    r.Elements[2][0] =  (m.Elements[0][1] * m.Elements[1][2] - m.Elements[0][2] * m.Elements[1][1]);
+    r.Elements[0][1] = -(m.Elements[1][0] * m.Elements[2][2] - m.Elements[1][2] * m.Elements[2][0]);
+    r.Elements[1][1] =  (m.Elements[0][0] * m.Elements[2][2] - m.Elements[0][2] * m.Elements[2][0]);
+    r.Elements[2][1] = -(m.Elements[0][0] * m.Elements[1][2] - m.Elements[0][2] * m.Elements[1][0]);
+    r.Elements[0][2] =  (m.Elements[1][0] * m.Elements[2][1] - m.Elements[1][1] * m.Elements[2][0]);
+    r.Elements[1][2] = -(m.Elements[0][0] * m.Elements[2][1] - m.Elements[0][1] * m.Elements[2][0]);
+    r.Elements[2][2] =  (m.Elements[0][0] * m.Elements[1][1] - m.Elements[0][1] * m.Elements[1][0]);
+
+    r.Elements[3][0] = 0.0;
+    r.Elements[3][1] = 0.0;
+    r.Elements[3][2] = 0.0;
+    r.Elements[0][3] = 0.0;
+    r.Elements[1][3] = 0.0;
+    r.Elements[2][3] = 0.0;
+    r.Elements[3][3] = 1.0;
+    return r;
+}
+
+float plot_fn(float x, float y, hmm_vec2 *deriv) {
+    const float r = HMM_SquareRootF(x * x + y * y);
+    const float rq = r * r;
     if (r < 1e-6) {
-        const float xq = x * x;
-        return (1 - xq / 6 + xq * xq / 120);
+        deriv->X = - 2 * x / 3;
+        deriv->Y = - 2 * y / 3;
+        return (1 - rq / 6 + rq * rq / 120);
+    } else {
+        const float der = (r * HMM_CosF(r) - HMM_SinF(r)) / rq;
+        deriv->X = der * x / r;
+        deriv->Y = der * y / r;
     }
     return HMM_SinF(r) / r;
 }
 
+#define PLOT3D_VS_MULT (3 + 2)
+
 static void do_plot3d_geometry(struct plot_geom *geom, const struct plot_domain domain) {
     const double dx = (domain.x2 - domain.x1) / domain.nx;
     const double dy = (domain.y2 - domain.y1) / domain.ny;
-    const int values_per_line = 3 + 4;
     geom->vertices_len = (domain.nx + 1) * (domain.ny + 1); /* Nb of points */
-    geom->vertices = malloc(sizeof(float) * geom->vertices_len * values_per_line);
+    geom->vertices = malloc(sizeof(float) * geom->vertices_len * PLOT3D_VS_MULT);
     for (int i = 0; i <= domain.nx; i++) {
         for (int j = 0; j <= domain.ny; j++) {
             const float x = domain.x1 + i * dx, y = domain.y1 + j * dy;
-            const float z = plot_fn(x, y);
-            const float col = z * z;
-            float line[] = {x, y, z, 1.0f, col, col, 1.0f};
-            float *v_ptr = geom->vertices + values_per_line * (i * (domain.ny + 1) + j);
+            hmm_vec2 deriv;
+            const float z = plot_fn(x, y, &deriv);
+            float line[] = {x, y, z, deriv.X, deriv.Y};
+            float *v_ptr = geom->vertices + PLOT3D_VS_MULT * (i * (domain.ny + 1) + j);
             memcpy(v_ptr, line, sizeof(line));
         }
     }
@@ -71,13 +113,14 @@ static void do_plot3d_geometry(struct plot_geom *geom, const struct plot_domain 
 void init() {
     const struct plot_domain domain = {-8.0f, 8.0f, -8.0f, 8.0f, 50, 50};
     struct plot_geom *surf = &state.geom;
+    state.light_pos = HMM_Vec3(5.0f, 5.0f, 4.0f);
 
     do_plot3d_geometry(surf, domain);
 
     sg_setup(&(sg_desc){ 0 });
 
     sg_buffer vbuf = sg_make_buffer(&(sg_buffer_desc){
-        .data = {surf->vertices, sizeof(float) * (3 + 4) * surf->vertices_len},
+        .data = {surf->vertices, sizeof(float) * PLOT3D_VS_MULT * surf->vertices_len},
         .label = "cube-vertices"
     });
 
@@ -88,16 +131,16 @@ void init() {
     });
 
     /* create shader */
-    sg_shader shd = sg_make_shader(cube_shader_desc(sg_query_backend()));
+    sg_shader shd = sg_make_shader(phong_shader_desc(sg_query_backend()));
 
     /* create pipeline object */
     state.pip = sg_make_pipeline(&(sg_pipeline_desc){
         .layout = {
             /* test to provide buffer stride, but no attr offsets */
-            .buffers[0].stride = 28,
+            .buffers[0].stride = sizeof(float) * PLOT3D_VS_MULT,
             .attrs = {
                 [ATTR_vs_position].format = SG_VERTEXFORMAT_FLOAT3,
-                [ATTR_vs_color0].format   = SG_VERTEXFORMAT_FLOAT4
+                [ATTR_vs_deriv].format    = SG_VERTEXFORMAT_FLOAT2
             }
         },
         .shader = shd,
@@ -107,7 +150,7 @@ void init() {
             .write_enabled = true,
             .compare = SG_COMPAREFUNC_LESS_EQUAL,
         },
-        .label = "cube-pipeline"
+        .label = "plot3d-pipeline"
     });
 
     /* setup resource bindings */
@@ -122,7 +165,7 @@ void frame(const struct plot_geom *geom, int w, int h, Uint32 frame_duration) {
     vs_params_t vs_params;
     const float t = frame_duration * 0.03;
     hmm_mat4 proj = HMM_Perspective(60.0f, (float)w / (float)h, 0.01f, 10.0f);
-    hmm_mat4 view = HMM_LookAt(HMM_Vec3(0.0f, 1.5f, 6.0f), HMM_Vec3(0.0f, 0.0f, 0.0f), HMM_Vec3(0.0f, 1.0f, 0.0f));
+    hmm_mat4 view = HMM_LookAt(HMM_Vec3(0.0f, 1.5f, 6.0f), HMM_Vec3(0.0f, 0.0f, 0.0f), HMM_Vec3(0.0f, 0.0f, 1.0f));
     hmm_mat4 view_proj = HMM_MultiplyMat4(proj, view);
     state.rx += 1.0f * t; state.ry += 2.0f * t;
     hmm_mat4 scalem = HMM_Scale(HMM_Vec3(0.2f, 0.2f, 1.0f));
@@ -131,6 +174,24 @@ void frame(const struct plot_geom *geom, int w, int h, Uint32 frame_duration) {
     hmm_mat4 rotm = HMM_MultiplyMat4(rxm, rym);
     hmm_mat4 model = HMM_MultiplyMat4(rotm, scalem);
     vs_params.mvp = HMM_MultiplyMat4(view_proj, model);
+    vs_params.model = model;
+    vs_params.model_co = HMM_Cofactor(model);
+
+    fs_params_t fs_params = { .view_pos = HMM_Vec3(0.0f, 3.0f, 2.0f) };
+
+    fs_material_t fs_material = {
+        .ambient   = HMM_Vec3(1.0f, 0.5f, 0.31f),
+        .diffuse   = HMM_Vec3(1.0f, 0.5f, 0.31f),
+        .specular  = HMM_Vec3(0.5f, 0.5f, 0.5f),
+        .shininess = 32.0f,
+    };
+
+    fs_light_t fs_light = {
+        .position = state.light_pos,
+        .ambient  = HMM_Vec3(0.2f, 0.2f, 0.2f),
+        .diffuse  = HMM_Vec3(0.5f, 0.5f, 0.5f),
+        .specular = HMM_Vec3(1.0f, 1.0f, 1.0f)
+    };
 
     sg_pass_action pass_action = {
         .colors[0] = { .action = SG_ACTION_CLEAR, .value = { 0.25f, 0.5f, 0.75f, 1.0f } }
@@ -138,7 +199,10 @@ void frame(const struct plot_geom *geom, int w, int h, Uint32 frame_duration) {
     sg_begin_default_pass(&pass_action, w, h);
     sg_apply_pipeline(state.pip);
     sg_apply_bindings(&state.bind);
-    sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_vs_params, &SG_RANGE(vs_params));
+    sg_apply_uniforms(SG_SHADERSTAGE_VS, SLOT_vs_params,   &SG_RANGE(vs_params));
+    sg_apply_uniforms(SG_SHADERSTAGE_FS, SLOT_fs_params,   &SG_RANGE(fs_params));
+    sg_apply_uniforms(SG_SHADERSTAGE_FS, SLOT_fs_material, &SG_RANGE(fs_material));
+    sg_apply_uniforms(SG_SHADERSTAGE_FS, SLOT_fs_light,    &SG_RANGE(fs_light));
     sg_draw(0, geom->indices_len * 3, 1);
     sg_end_pass();
     sg_commit();
