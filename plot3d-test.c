@@ -14,6 +14,7 @@ typedef struct {
 typedef struct {
     float x1, x2, y1, y2;
     int nx, ny;
+    int groupx, groupy;
 } plot_domain;
 
 static struct {
@@ -75,7 +76,7 @@ float plot_fn(float x, float y, hmm_vec2 *deriv) {
     return HMM_SinF(r) / r;
 }
 
-#define PLOT3D_VS_MULT (3 + 2)
+#define PLOT3D_VS_MULT (3 + 2 + 2)
 
 static void do_plot3d_geometry(plot_geom *geom, const plot_domain domain) {
     const double dx = (domain.x2 - domain.x1) / domain.nx;
@@ -83,11 +84,16 @@ static void do_plot3d_geometry(plot_geom *geom, const plot_domain domain) {
     geom->vertices_len = (domain.nx + 1) * (domain.ny + 1); /* Nb of points */
     geom->vertices = malloc(sizeof(float) * geom->vertices_len * PLOT3D_VS_MULT);
     for (int i = 0; i <= domain.nx; i++) {
+        const float x = domain.x1 + i * dx;
+        const float x_grid = domain.x1 + (i / domain.groupx) * domain.groupx * dx;
+        const float x_bar = (x - x_grid) / (domain.groupx * dx);
         for (int j = 0; j <= domain.ny; j++) {
-            const float x = domain.x1 + i * dx, y = domain.y1 + j * dy;
+            const float y = domain.y1 + j * dy;
+            const float y_grid = domain.y1 + (j / domain.groupy) * domain.groupy * dy;
+            const float y_bar = (y - y_grid) / (domain.groupy * dy);
             hmm_vec2 deriv;
             const float z = plot_fn(x, y, &deriv);
-            float line[] = {x, y, z, deriv.X, deriv.Y};
+            float line[] = {x, y, z, x_bar, y_bar, deriv.X, deriv.Y};
             float *v_ptr = geom->vertices + PLOT3D_VS_MULT * (i * (domain.ny + 1) + j);
             memcpy(v_ptr, line, sizeof(line));
         }
@@ -111,7 +117,7 @@ static void do_plot3d_geometry(plot_geom *geom, const plot_domain domain) {
 }
 
 void init() {
-    const plot_domain domain = {-8.0f, 8.0f, -8.0f, 8.0f, 50, 50};
+    const plot_domain domain = {-8.0f, 8.0f, -8.0f, 8.0f, 50, 50, 5, 5};
     plot_geom *surf = &state.geom;
     state.light_pos = HMM_Vec3(5.0f, 5.0f, 4.0f);
 
@@ -140,6 +146,7 @@ void init() {
             .buffers[0].stride = sizeof(float) * PLOT3D_VS_MULT,
             .attrs = {
                 [ATTR_vs_position].format = SG_VERTEXFORMAT_FLOAT3,
+                [ATTR_vs_pos_bar].format  = SG_VERTEXFORMAT_FLOAT2,
                 [ATTR_vs_deriv].format    = SG_VERTEXFORMAT_FLOAT2
             }
         },

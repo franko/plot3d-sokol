@@ -15,21 +15,28 @@ uniform vs_params {
 };
 
 in vec3 position;
-in vec3 deriv;
+in vec2 pos_bar;
+in vec2 deriv;
 
 out vec3 frag_pos;
 out vec3 normal;
+out vec2 pos_bar_vs;
+out vec2 deriv_vs;
 
 void main() {
     gl_Position = mvp * vec4(position, 1.0);
     frag_pos = vec3(model * vec4(position, 1.0));
     normal = normalize(mat3(model_co) * vec3(-deriv.x, -deriv.y, 1.0));
+    pos_bar_vs = pos_bar;
+    deriv_vs = deriv;
 }
 @end
 
 @fs fs
 in vec3 frag_pos;
 in vec3 normal;
+in vec2 pos_bar_vs;
+in vec2 deriv_vs;
 
 out vec4 frag_color;
 
@@ -54,10 +61,18 @@ uniform fs_light {
 void main() {
     vec3 ambient = light.ambient * material.ambient;
 
+    vec3 mat_diffuse;
+    float x_bar_th = 0.02 / length(vec2(deriv_vs.x, 1.0));
+    float y_bar_th = 0.02 / length(vec2(deriv_vs.y, 1.0));
+    if (pos_bar_vs.x < x_bar_th || pos_bar_vs.x > 1 - x_bar_th || pos_bar_vs.y < y_bar_th || pos_bar_vs.y > 1 - y_bar_th) {
+        mat_diffuse = vec3(0.2, 0.2, 0.2);
+    } else {
+        mat_diffuse = material.diffuse;
+    }
     vec3 norm = normalize(normal);
     vec3 light_dir = normalize(light.position - frag_pos);
     float diff = max(dot(norm, light_dir), 0.0);
-    vec3 diffuse = light.diffuse * (diff * material.diffuse);
+    vec3 diffuse = light.diffuse * (diff * mat_diffuse);
 
     vec3 view_dir = normalize(view_pos - frag_pos);
     vec3 reflect_dir = reflect(-light_dir, norm);
