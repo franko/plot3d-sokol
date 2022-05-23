@@ -46,7 +46,8 @@ uniform fs_params {
 
 uniform fs_material {
     vec3 ambient;
-    vec3 diffuse;
+    vec3 diffuse_front;
+    vec3 diffuse_back;
     vec3 specular;
     float shininess;
 } material;
@@ -67,11 +68,16 @@ void main() {
     if (pos_bar_vs.x < x_bar_th || pos_bar_vs.x > 1 - x_bar_th || pos_bar_vs.y < y_bar_th || pos_bar_vs.y > 1 - y_bar_th) {
         mat_diffuse = vec3(0.2, 0.2, 0.2);
     } else {
-        mat_diffuse = material.diffuse;
+        if (gl_FrontFacing) {
+            mat_diffuse = material.diffuse_back;
+        } else {
+            mat_diffuse = material.diffuse_front;
+        }
     }
+
     vec3 norm = normalize(normal);
     vec3 light_dir = normalize(light.position - frag_pos);
-    float diff = max(dot(norm, light_dir), 0.0);
+    float diff = abs(dot(norm, light_dir));
     vec3 diffuse = light.diffuse * (diff * mat_diffuse);
 
     vec3 view_dir = normalize(view_pos - frag_pos);

@@ -187,9 +187,10 @@ void frame(const plot_geom *geom, int w, int h, Uint32 frame_duration) {
     fs_params_t fs_params = { .view_pos = HMM_Vec3(0.0f, 3.0f, 2.0f) };
 
     fs_material_t fs_material = {
-        .ambient   = HMM_Vec3(1.0f, 0.5f, 0.31f),
-        .diffuse   = HMM_Vec3(1.0f, 0.5f, 0.31f),
-        .specular  = HMM_Vec3(0.5f, 0.5f, 0.5f),
+        .ambient       = HMM_Vec3(0.4f, 0.4f, 1.0f),
+        .diffuse_front = HMM_Vec3(0.4f, 0.4f, 1.0f),
+        .diffuse_back  = HMM_Vec3(1.0f, 0.4f, 0.4f),
+        .specular      = HMM_Vec3(0.5f, 0.5f, 0.5f),
         .shininess = 32.0f,
     };
 
