@@ -40,7 +40,7 @@ static struct {
 // https://www.reedbeta.com/blog/normals-inverse-transpose-part-1/
 // https://en.wikipedia.org/wiki/Minor_(linear_algebra)#Inverse_of_a_matrix
 hmm_mat4 HMM_Cofactor(hmm_mat4 m) {
-    hmm_mat4 r;
+    hmm_mat4 r = HMM_Mat4d(1.0f);
     r.Elements[0][0] =  (m.Elements[1][1] * m.Elements[2][2] - m.Elements[1][2] * m.Elements[2][1]);
     r.Elements[1][0] = -(m.Elements[0][1] * m.Elements[2][2] - m.Elements[0][2] * m.Elements[2][1]);
     r.Elements[2][0] =  (m.Elements[0][1] * m.Elements[1][2] - m.Elements[0][2] * m.Elements[1][1]);
@@ -50,14 +50,6 @@ hmm_mat4 HMM_Cofactor(hmm_mat4 m) {
     r.Elements[0][2] =  (m.Elements[1][0] * m.Elements[2][1] - m.Elements[1][1] * m.Elements[2][0]);
     r.Elements[1][2] = -(m.Elements[0][0] * m.Elements[2][1] - m.Elements[0][1] * m.Elements[2][0]);
     r.Elements[2][2] =  (m.Elements[0][0] * m.Elements[1][1] - m.Elements[0][1] * m.Elements[1][0]);
-
-    r.Elements[3][0] = 0.0;
-    r.Elements[3][1] = 0.0;
-    r.Elements[3][2] = 0.0;
-    r.Elements[0][3] = 0.0;
-    r.Elements[1][3] = 0.0;
-    r.Elements[2][3] = 0.0;
-    r.Elements[3][3] = 1.0;
     return r;
 }
 
