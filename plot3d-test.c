@@ -1,6 +1,9 @@
+#define SOKOL_IMPL
+#define SOKOL_GLCORE33
+#include <sokol_gfx.h>
+
 #include <HandmadeMath.h>
 #include <SDL.h>
-#include <sokol_gfx.h>
 
 #include "plot3d.glsl.h"
 
@@ -37,7 +40,7 @@ static struct {
 // matrix. The two matrices are proportional and normalization is needed in any case.
 //
 // The cofactor matrix has the nice geometrical interpretation that it trasforms
-// bivectors in their representation as normal bector.
+// bivectors in their representation as normal vector.
 //
 // https://www.reedbeta.com/blog/normals-inverse-transpose-part-1/
 // https://en.wikipedia.org/wiki/Minor_(linear_algebra)#Inverse_of_a_matrix
@@ -197,7 +200,7 @@ void frame(const plot_geom *geom, int w, int h) {
     };
 
     sg_pass_action pass_action = {
-        .colors[0] = { .action = SG_ACTION_CLEAR, .value = { 0.25f, 0.5f, 0.75f, 1.0f } }
+        .colors[0] = { .load_action = SG_LOADACTION_CLEAR, .clear_value = { 0.25f, 0.5f, 0.75f, 1.0f } }
     };
     sg_begin_default_pass(&pass_action, w, h);
     sg_apply_pipeline(state.pip);
@@ -212,13 +215,14 @@ void frame(const plot_geom *geom, int w, int h) {
 }
 
 int main(int argc, char **argv) {
-    SDL_Init(SDL_INIT_EVERYTHING);
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
+
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-  
+
     state.window = SDL_CreateWindow("Window",
         SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
         720, 720, SDL_WINDOW_RESIZABLE|SDL_WINDOW_OPENGL|SDL_WINDOW_ALLOW_HIGHDPI);

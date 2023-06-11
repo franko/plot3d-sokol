@@ -1,0 +1,4 @@
+CC="${CC:-gcc}"
+CXX="${CXX:-g++}"
+
+packages=("sdl2 -opengl" handmademath sokol-tools-bin sokol "glad -loader")
