@@ -1,7 +1,4 @@
-#define SOKOL_IMPL
-#define SOKOL_GLCORE33
 #include <sokol_gfx.h>
-
 #include <HandmadeMath.h>
 #include <SDL.h>
 
@@ -291,4 +288,3 @@ quit_app:
     SDL_Quit();
     return 0;
 }
-
